@@ -60,8 +60,8 @@ abstract は目的と手段を含む1文。field、background、problem、soluti
 classCode は A01（生活上の無益）、B02（機械的徒労）、C03（無意味な情報処理）、D04（目的と手段の逆転）、E05（高度無用技術）から選ぶ。
 verdict が approved の場合、無用性を構造に即して冷静に認定する。rejected の場合は、実質的有用性または無用性の進歩性不足を、構造と試験結果に照らして指摘する。拒絶理由の類型を分散する。
 citations は同じ回答に含まれる技術的に関連した別公報の slot 番号を0〜2個。関連が薄ければ空配列とする。
-figure は、解決手段に記載した主要部を示す一枚の白黒特許図面。物品は外形・断面・平面のうち作用が伝わる向きを選び、データ処理の考案は部材の接続や流れを描く。対象物の形と機能の違いが線画に出るようにする。
-図面は幅560、高さ340で左上が原点。輪郭や機構を x=80〜480、y=45〜295 に配置する。contour は簡潔なSVGパス座標列だけ。命令は M L H V C Q Z、座標は整数とし、すべて空白で分ける。記載例「M 140 80 H 400 V 230 H 140 Z M 150 110 H 390」。800字以内を目安に輪郭と主要部品を表す。hidden は隠れ線が必要な場合だけ記載し、不要なら空文字。タグ、画像URL、文字ラベルは入れない。
+figure は解決手段に記載した主要部を示す一枚の白黒特許図面。各 slot の drawingView に沿って、対象物の輪郭と、その発明の作用を示す部材や接点を描く。図法は題材に合うよう調整してよい。機構の図では、曲面、開口、支点、かみ合い、対象物との接点など、請求項に対応する特徴を少なくとも二つ見せる。工程図では、入力物や処理後に変わるものの形と、その間の順序、分岐、循環のうち必要なものを描く。各公報で対象物と機構が見分けられるよう輪郭と構図を変える。汎用の二重の四角や、中身のない枠だけの図は使わない。
+図面は幅560、高さ340で左上が原点。輪郭や機構を x=65〜495、y=45〜295 に配置する。contour は簡潔なSVGパス座標列だけ。命令は M L H V C Q Z、座標は整数とし、すべて空白で分ける。900字以内を目安に外形、部材の輪郭、必要な場合は動作方向を示す。hidden は隠れ線や軌跡が必要な場合だけ記載し、不要なら空文字。タグ、画像URL、文字ラベルは入れない。
 parts は名称が異なる主要部品2〜4個。name は請求項または解決手段に合わせる。x と y は部品を指す点。labelX と labelY は引出線の先の数字を置く余白の点とし、境界から18以上離す。符号はアプリが付ける。caption は図の内容を示す簡潔な名称。`;
 
 class APIProblem extends Error {
@@ -204,16 +204,17 @@ function cleanPublication(entry, slot) {
     claims,
     citations: [...new Set(citations.filter((ref) => Number.isInteger(ref)
       && ref >= 1 && ref <= RECORD_COUNT && ref !== slot.slot))].slice(0, 2),
-    figure: normalizeFigure(entry.figure)
+    figure: normalizeFigure(entry.figure, slot)
   };
 }
 
 function publicationSlots(filter) {
+  const views = shuffled(DRAWING_VIEWS.map((_, index) => index));
   return Array.from({ length: RECORD_COUNT }, (_, i) => {
     const mixed = filter === 'all' || filter === 'rejected';
     const kind = mixed ? (i < GROUP_SIZE ? 'patent' : 'model') : filter;
     const rejected = filter === 'rejected' || i === GROUP_SIZE - 1 || (filter === 'all' && i === RECORD_COUNT - 1);
-    return { slot: i + 1, kind, verdict: rejected ? 'rejected' : 'approved' };
+    return { slot: i + 1, kind, verdict: rejected ? 'rejected' : 'approved', figureView: views[i] };
   });
 }
 
@@ -236,7 +237,8 @@ async function generatePublications({ subject, random, filter, recentTitles, mod
       instructions: EXAMINER_INSTRUCTIONS,
       input: JSON.stringify({
         subject, mode: random ? '分野抽出' : 'キーワード検索',
-        slots, focus,
+        slots: slots.map(({ figureView, ...slot }) => ({ ...slot, drawingView: DRAWING_VIEWS[figureView].brief })),
+        focus,
         avoidTitles: [...recentTitles, ...[...received.values()].map((entry) => entry.title)],
         variation: crypto.getRandomValues(new Uint32Array(1))[0].toString(36)
       }),
@@ -290,5 +292,12 @@ async function generatePublications({ subject, random, filter, recentTitles, mod
     throw problem ?? formatProblem();
   }
   const entries = plan.map(({ slot }) => received.get(slot)).filter(Boolean);
+  const geometries = new Set();
+  for (const entry of entries) {
+    if (!entry.figure) continue;
+    const geometry = figureGeometryKey(entry.figure.contour);
+    if (geometries.has(geometry)) entry.figure = componentDiagram(entry.figure.parts, entry);
+    geometries.add(geometry);
+  }
   return { entries, warning: problem?.message ?? '' };
 }

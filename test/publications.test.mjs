@@ -7,7 +7,8 @@ import { runInNewContext } from 'node:vm';
 const scripts = await Promise.all(['catalog', 'figures', 'api'].map((name) =>
   readFile(new URL('../src/' + name + '.js', import.meta.url), 'utf8')
 ));
-const source = scripts.join('\n') + '\n({ generatePublications, readPublicationRows });';
+const source = scripts.join('\n') + '\n({ generatePublications, normalizeFigure, readPublicationRows });';
+const { normalizeFigure } = runInNewContext(source);
 
 function mockPublication(slot, changes = {}) {
   return {
@@ -43,20 +44,21 @@ function envelope(text, status = 'completed', reason) {
   };
 }
 
-function fakeAPI(handler) {
+function fakeAPI(handler, random = Math.random) {
   const requests = [];
   const api = runInNewContext(source, {
     crypto: webcrypto, AbortController, setTimeout, clearTimeout,
+    Math: Object.assign(Object.create(Math), { random }),
     fetch: async (url, options) => {
       assert.equal(url, 'https://api.openai.com/v1/responses');
       const body = JSON.parse(options.body);
       const input = JSON.parse(body.input);
       requests.push({ body, input });
-      return handler(input.slots, requests.length);
+      return handler(input.slots, requests.length, input.subject);
     }
   });
-  const run = (onProgress) => api.generatePublications({
-    subject: '車', random: false, filter: 'all', recentTitles: [],
+  const run = (onProgress, subject = '車') => api.generatePublications({
+    subject, random: false, filter: 'all', recentTitles: [],
     model: 'gpt-5.4-mini', key: 'test-key', signal: new AbortController().signal, onProgress
   });
   return { run, requests };
@@ -106,4 +108,83 @@ test('does not reuse an output stopped by the content filter', async () => {
   )));
   await assert.rejects(api.run(), (error) => error.code === 'refusal');
   assert.equal(api.requests.length, 2);
+});
+
+test('uses different drawing briefs and keeps different component diagrams when all outlines are boxes', async () => {
+  const api = fakeAPI((slots) => Response.json(envelope(
+    JSON.stringify({ publications: slots.map(({ slot }) => mockPublication(slot)) })
+  )));
+  const { entries } = await api.run();
+  const views = api.requests.flatMap(({ input }) => input.slots.map(({ drawingView }) => drawingView));
+  assert.equal(new Set(views).size, 8);
+  assert.equal(entries.length, 8);
+  assert.equal(new Set(entries.map((entry) => entry.figure.contour)).size, 8);
+  for (const entry of entries) {
+    assert.equal(entry.figure.caption, '主要構成要素の模式図');
+    assert.deepEqual(Array.from(entry.figure.parts, ({ name }) => name), ['開閉弁', 'トレー']);
+    assert.equal(JSON.stringify(normalizeFigure(entry.figure, entry).parts), JSON.stringify(entry.figure.parts));
+  }
+});
+
+test('keeps a custom drawing and replaces repeated geometry even at a different scale and position', async () => {
+  const contour = 'M 130 130 L 234 72 H 409 V 200 L 304 251 H 130 Z M 130 130 H 304 L 409 72 M 304 130 V 251';
+  const reduced = 'M 80 90 L 132 61 H 219.5 V 125 L 167 150.5 H 80 Z M 80 90 H 167 L 219.5 61 M 167 90 V 150.5';
+  const api = fakeAPI((slots) => Response.json(envelope(JSON.stringify({
+    publications: slots.map(({ slot }) => {
+      const entry = mockPublication(slot);
+      entry.figure.contour = slot % 2 === 1 ? contour : reduced;
+      return entry;
+    })
+  }))));
+  const { entries } = await api.run();
+  assert.equal(entries[0].figure.contour, contour);
+  assert.equal(entries[1].figure.caption, '主要構成要素の模式図');
+  assert.equal(new Set(entries.map((entry) => entry.figure.contour)).size, 8);
+});
+
+test('varies drawing views for a repeated keyword and uses publication parts for other subjects', async () => {
+  const subjects = new Map([
+    ['傘', ['回転軸', '開閉ばね']],
+    ['申請書', ['提出票', '決裁端末']],
+    ['加湿器', ['貯水容器', '送風ファン']]
+  ]);
+  let draw = 0.14;
+  const api = fakeAPI((slots, _, subject) => Response.json(envelope(JSON.stringify({
+    publications: slots.map(({ slot }) => {
+      const entry = mockPublication(slot, { title: subject + 'の公報' + slot });
+      entry.figure.parts.forEach((part, index) => { part.name = subjects.get(subject)[index]; });
+      return entry;
+    })
+  }))), () => draw);
+
+  for (const [subject, names] of subjects) {
+    const { entries } = await api.run(undefined, subject);
+    assert.equal(entries.length, 8);
+    assert.equal(new Set(entries.map((entry) => entry.figure.contour)).size, 8);
+    assert.deepEqual(Array.from(entries[0].figure.parts, ({ name }) => name), names);
+  }
+  const startingViews = api.requests.slice(0, 2).flatMap(({ input }) => input.slots.map((slot) => slot.drawingView));
+  draw = 0.77;
+  await api.run(undefined, '傘');
+  const repeatedViews = api.requests.slice(-2).flatMap(({ input }) => input.slots.map((slot) => slot.drawingView));
+  assert.equal(new Set(repeatedViews).size, 8);
+  assert.notDeepEqual(new Set(repeatedViews), new Set(startingViews));
+});
+
+test('restores the hair-direction drawing from a stored outline without a new request', () => {
+  const title = '黒点導毛方向指示装置';
+  const figure = {
+    caption: title + 'の正面図',
+    contour: 'M 120 80 L 440 80 L 440 270 L 120 270 Z M 170 120 H 390 V 230 H 170 Z M 250 80 V 120 M 315 80 V 120',
+    hidden: '',
+    parts: ['検知板', '整流羽根', '指向札'].map((name, i) =>
+      ({ name, x: 200 + i * 50, y: 125, labelX: 90 + i * 180, labelY: 96 }))
+  };
+  const drawing = normalizeFigure(figure, { id: 'gen-batch-1', title });
+  assert.equal(drawing.caption, title + 'の使用状態図');
+  assert.deepEqual(Array.from(drawing.parts, ({ name }) => name), figure.parts.map(({ name }) => name));
+  assert.match(drawing.contour, /C/);
+  assert.equal(normalizeFigure(drawing, { title }).caption, drawing.caption);
+  assert.equal(normalizeFigure(figure, { title, figureView: 3 }).caption, '主要構成要素の模式図');
+  assert.equal(normalizeFigure(figure, { title: '黒点辺縁の毛影写録装置' }).caption, '主要構成要素の模式図');
 });

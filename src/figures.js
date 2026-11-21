@@ -273,7 +273,28 @@ const GENERAL_FIGURES = {
 
 const SAMPLE_FIGURES = { ...COLD_FIGURES, ...RAIN_FIGURES, ...GENERAL_FIGURES };
 
+const HAIR_DIRECTION_FIGURE = plate('黒点導毛方向指示装置の使用状態図', [
+  'M77 220 C129 211 164 222 194 214 C221 205 242 207 272 214 C325 228 383 208 476 221 V255 C401 243 333 265 274 250 C232 239 212 241 180 249 C139 257 104 244 77 253 Z',
+  'M193 214 C194 204 200 197 209 198 C220 198 228 203 232 209 C214 207 208 210 193 214 Z M198 210 L207 200 M204 209 L214 200 M212 208 L219 202 M219 208 L225 205',
+  'M208 202 C206 174 217 143 246 119 C225 142 212 174 212 201',
+  'M91 130 L148 109 L164 138 L106 159 Z M106 159 L112 169 L169 148 L164 138 M112 169 L91 141 V130 M112 132 L140 122 L149 137 L121 147 Z M99 145 L105 155',
+  'M356 116 L405 100 L433 112 V150 L383 167 L356 154 Z M356 116 L383 129 L433 112 M383 129 V167 M405 100 V85 L435 77 V104 M409 90 L433 83',
+  'M392 134 L424 123 L419 131 L390 141 Z M392 144 L424 133 L419 141 L390 151 Z M392 154 L424 143 L419 151 L390 161 Z',
+  'M354 158 C331 158 308 147 284 149 M345 171 C315 172 296 154 269 158 M285 151 L269 158 L286 163',
+  'M306 205 H334 V214 H300 V205 H306 M315 204 V185 M323 204 V185 M313 179 C313 171 324 171 327 178 C330 185 317 189 313 182 Z M319 174 L296 128 L301 123 L325 173',
+  'M300 133 L279 121 L296 111 L316 121 L302 130 M285 121 L297 116 L305 121',
+  'M96 243 L116 224 M121 245 L140 226 M149 248 L167 229 M262 245 L280 227 M287 251 L305 233 M318 253 L334 235 M353 251 L372 234 M388 247 L404 230 M423 246 L439 229 M453 249 L469 233'
+], [
+  ['検知板', 132, 133, 70, 82],
+  ['整流羽根', 415, 139, 480, 94],
+  ['指向札', 297, 121, 315, 65]
+], ['M158 158 L203 197 M172 146 L213 198 M320 170 V116 M326 127 Q316 115 309 117']);
+
 const PATH_ARITY = { M: 2, L: 2, H: 1, V: 1, C: 6, Q: 4, Z: 0 };
+
+function pathAxis(command, operand) {
+  return command === 'V' || (command !== 'H' && operand % 2 === 1) ? 1 : 0;
+}
 
 function validPath(value, limit) {
   if (typeof value !== 'string' || !value.trim() || value.length > limit
@@ -290,7 +311,7 @@ function validPath(value, limit) {
     const arity = PATH_ARITY[command];
     while (index < tokens.length && !Object.hasOwn(PATH_ARITY, tokens[index])) {
       if (!arity) return '';
-      const dimension = command === 'V' || (command !== 'H' && (index - start) % 2 === 1) ? FIGURE_HEIGHT : FIGURE_WIDTH;
+      const dimension = pathAxis(command, index - start) ? FIGURE_HEIGHT : FIGURE_WIDTH;
       if (Number(tokens[index]) > dimension) return '';
       index += 1;
     }
@@ -301,23 +322,155 @@ function validPath(value, limit) {
   return drawCount >= 2 ? tokens.join(' ') : '';
 }
 
-function componentDiagram(names) {
-  const columns = Math.min(names.length, 3);
-  const steps = 142;
-  const boxWidth = 112;
-  const origin = (FIGURE_WIDTH - (columns - 1) * steps - boxWidth) / 2;
-  const solid = [];
-  const pointers = [];
-  for (const [i, name] of names.entries()) {
-    const x = origin + (i % columns) * steps;
-    const y = names.length > 3 ? 108 + Math.floor(i / columns) * 112 : 141;
-    const right = x + boxWidth;
-    const center = x + boxWidth / 2;
-    solid.push('M' + x + ' ' + y + ' H' + right + ' V' + (y + 57) + ' H' + x + ' Z',
-      'M' + (x + 22) + ' ' + (y + 25) + ' H' + (right - 22) + ' M' + (x + 22) + ' ' + (y + 36) + ' H' + (right - 34));
-    pointers.push([name, center, y, center, y - 27]);
+// Compare line work in a common coordinate range regardless of position or scale.
+function figureGeometryKey(contour) {
+  const axes = [[], []];
+  const commands = Array.from(contour.matchAll(/([MLHVCQZ])((?: [\d.]+)*)/g), ([, command, operands]) => ({
+    command,
+    values: operands ? operands.slice(1).split(' ').map(Number) : []
+  }));
+  for (const { command, values } of commands) {
+    values.forEach((value, i) => axes[pathAxis(command, i)].push(value));
   }
-  return plate('発明を構成する要素のブロック図', solid, pointers);
+  const min = axes.map((values) => Math.min(...values));
+  const span = Math.max(1, ...axes.map((values, axis) => Math.max(...values) - min[axis]));
+  return commands.map(({ command, values }) => command + values.map((value, i) =>
+    Math.round((value - min[pathAxis(command, i)]) * 64 / span)).join(',')).join(' ');
+}
+
+// Simple orthogonal outlines need a component diagram.
+function hasShapeDetail(contour, hidden) {
+  if (hidden || /[CQ]/.test(contour)) return true;
+  let x = 0;
+  let y = 0;
+  let startX = 0;
+  let startY = 0;
+  let segments = 0;
+  for (const [, command, operands] of contour.matchAll(/([MLHVZ])((?: [\d.]+)*)/g)) {
+    if (command === 'Z') {
+      if (x !== startX && y !== startY) return true;
+      segments += Number(x !== startX || y !== startY);
+      x = startX;
+      y = startY;
+      continue;
+    }
+    const numbers = operands.slice(1).split(' ').map(Number);
+    for (let i = 0; i < numbers.length; i += PATH_ARITY[command]) {
+      const nextX = command === 'V' ? x : numbers[i];
+      const nextY = command === 'H' ? y : numbers[i + Number(command !== 'V')];
+      if (command === 'M' && i === 0) {
+        startX = nextX;
+        startY = nextY;
+      } else {
+        if (nextX !== x && nextY !== y) return true;
+        segments += Number(nextX !== x || nextY !== y);
+      }
+      x = nextX;
+      y = nextY;
+    }
+  }
+  return segments > 12;
+}
+
+// Symbols for incomplete drawings. Each symbol uses coordinate pairs in a 92×72 area.
+const PART_SYMBOLS = [
+  [/羽根|送風|ファン/, 'M 46 6 C 86 6 86 66 46 66 C 6 66 6 6 46 6 Z M 46 36 Q 19 30 33 18 Q 43 13 46 36 Q 70 22 72 40 Q 73 52 46 36 Q 55 63 38 56 Q 29 50 46 36 Z'],
+  [/歯車|ギア|歯輪/, 'M 40 9 L 52 9 L 54 17 L 62 21 L 71 19 L 78 29 L 73 36 L 76 43 L 82 49 L 74 58 L 66 55 L 58 58 L 55 65 L 42 65 L 39 58 L 30 54 L 21 57 L 14 47 L 20 41 L 19 32 L 13 26 L 21 16 L 30 20 L 38 17 Z M 47 25 C 65 25 65 50 47 50 C 29 50 29 25 47 25 Z'],
+  [/環|輪|回転|リング|軸/, 'M 46 7 C 85 7 92 44 65 59 Q 46 70 27 59 C 0 44 7 7 46 7 Z M 46 21 C 68 21 72 52 46 52 C 20 52 24 21 46 21 Z M 46 7 L 46 21 M 75 25 L 63 30 M 33 45 L 21 55'],
+  [/ばね|弁|係止|爪|ラッチ/, 'M 10 56 L 82 56 L 82 62 L 10 62 Z M 30 55 L 46 28 L 59 55 M 18 49 L 26 36 L 32 44 L 38 32 M 43 28 L 73 12 L 78 20 L 49 36 Z'],
+  [/流路|管|ノズル/, 'M 8 20 L 37 20 Q 61 20 61 38 L 61 43 L 81 39 L 81 57 L 53 57 Q 36 57 36 40 L 36 36 L 8 36 Z M 18 28 L 39 28 Q 50 29 50 41 Q 50 52 68 50 M 61 46 L 68 50 L 61 53'],
+  [/蓋|フタ|戸|扉/, 'M 13 42 L 71 42 L 82 53 L 23 53 Z M 23 53 L 23 62 L 82 62 L 82 53 M 13 42 L 20 13 L 78 13 L 71 42 M 24 38 L 29 20 L 65 20 L 61 38 Z'],
+  [/札|票|紙|ラベル|印字/, 'M 22 12 L 60 12 L 72 25 L 72 60 L 22 60 Z M 60 12 L 60 25 L 72 25 M 31 31 L 52 31 M 31 39 L 64 39 M 31 47 L 57 47 M 31 55 L 45 55'],
+  [/検知|検出|センサ|目盛|照合/, 'M 16 36 L 33 19 Q 46 10 59 19 L 76 36 L 59 53 Q 46 62 33 53 Z M 46 26 Q 56 26 56 36 Q 56 46 46 46 Q 36 46 36 36 Q 36 26 46 26 Z M 46 11 L 46 18 M 46 54 L 46 61'],
+  [/槽|容器|カップ|受け皿/, 'M 12 25 C 12 9 80 9 80 25 C 80 42 12 42 12 25 Z M 12 25 L 23 54 C 35 64 57 64 69 54 L 80 25 M 20 28 C 32 19 60 19 72 28 M 50 39 L 45 55 M 57 38 L 52 56 M 64 37 L 59 55'],
+  [/枠|案内|ガイド/, 'M 9 48 L 30 18 L 83 18 L 62 48 Z M 23 42 L 36 25 L 69 25 L 56 42 Z M 9 48 L 9 57 L 62 57 L 83 27 L 83 18 M 62 48 L 62 57'],
+  [/板|台|受|棚|トレー|座/, 'M 10 38 L 31 17 L 81 17 L 61 38 Z M 10 38 L 10 45 L 61 45 L 81 24 L 81 17 M 61 38 L 61 45 M 23 36 L 42 18 M 36 36 L 55 18 M 49 36 L 68 18'],
+  [/表示|端末|記録|制御/, 'M 12 14 L 79 14 L 79 52 L 12 52 Z M 22 22 L 68 22 L 68 43 L 22 43 Z M 33 32 L 42 27 L 49 36 L 60 30 M 39 52 L 39 61 M 53 52 L 53 61 M 27 61 L 65 61']
+];
+const DEFAULT_PART_SYMBOL = 'M 15 36 Q 15 18 33 18 L 58 18 Q 77 18 77 36 Q 77 54 58 54 L 33 54 Q 15 54 15 36 Z M 25 36 L 67 36 M 38 29 L 38 43 M 54 29 L 54 43';
+
+function placedSymbol(name, x, y) {
+  const symbol = PART_SYMBOLS.find(([pattern]) => pattern.test(name))?.[1] ?? DEFAULT_PART_SYMBOL;
+  const offset = [x - 46, y - 36];
+  let axis = 0;
+  return symbol.split(' ').map((token) => {
+    if (/^[A-Z]$/.test(token)) {
+      axis = 0;
+      return token;
+    }
+    const value = Number(token) + offset[axis];
+    axis = 1 - axis;
+    return value;
+  }).join(' ');
+}
+
+const DRAWING_VIEWS = [
+  {
+    brief: '使用状態図。対象と装置が接する部分を描き、力、気流、検知などの作用方向を示す。',
+    positions: [[-126, 44], [0, -52], [126, 44], [-126, -52], [126, -52], [0, 44]]
+  },
+  {
+    brief: '分解斜視図。軸や取付位置に沿って部材を離して配置し、組合せ方を示す。',
+    positions: [[0, -92], [0, 0], [0, 92], [-132, -46], [132, 46], [132, -46]]
+  },
+  {
+    brief: '部分拡大断面図。作用箇所を拡大し、切断面の斜線、接触面、内外の関係を示す。',
+    positions: [[-132, 0], [0, 0], [132, 0], [-132, 92], [0, 92], [132, 92]]
+  },
+  {
+    brief: '作動前後の比較図。同一機構を左右に配置し、位置や向きが変わる部材を示す。',
+    positions: [[-124, -60], [124, -60], [-124, 60], [124, 60], [0, -60], [0, 60]]
+  },
+  {
+    brief: '取付状態の斜視図。取付先の一部と、部材の厚み、曲がり、係止部を示す。',
+    positions: [[-128, 62], [0, 0], [128, -62], [-128, -62], [128, 62], [0, 92]]
+  },
+  {
+    brief: '平面図。上方から見た対象の輪郭と、案内部や位置合わせの形状を示す。',
+    positions: [[0, -86], [134, 0], [0, 86], [-134, 0], [-134, -86], [134, 86]]
+  },
+  {
+    brief: '可動部の側面図。軸、支点、作用先を描き、移動または回転の軌跡を破線で示す。',
+    positions: [[-132, -74], [-132, 30], [0, 72], [132, 30], [132, -74], [0, -74]]
+  },
+  {
+    brief: '工程・接続図。機構や帳票の動きを、入力、処理、結果のつながりとして示す。',
+    positions: [[-132, 0], [0, -76], [132, 0], [0, 76], [-132, 96], [132, -96]]
+  },
+  {
+    brief: '切欠き斜視図。外装を部分的に切り欠き、内部の部材と外形の位置関係を示す。',
+    positions: [[-134, 58], [134, 58], [0, -66], [-134, -66], [0, 58], [134, -66]]
+  },
+  {
+    brief: '正面・側面の対照図。同じ部品を異なる方向から描き、厚みや角度の違いを示す。',
+    positions: [[-74, -70], [74, 70], [-74, 70], [74, -70], [-185, 0], [185, 0]]
+  },
+  {
+    brief: '動作経路の展開図。部材や対象物が通る経路を描き、途中で向きが変わる箇所を示す。',
+    positions: [[-136, -89], [0, 12], [136, 74], [-136, 74], [0, -89], [136, -89]]
+  },
+  {
+    brief: '試験・計測の配置図。試験体、測る位置、読み取る側の距離や向きが分かるように描く。',
+    positions: [[0, -78], [0, 78], [-140, 0], [140, 0], [-140, -92], [140, 92]]
+  }
+];
+
+function componentDiagram(parts, { figureView, slot, id } = {}) {
+  const view = figureView ?? ((slot ?? Number(id?.split('-').at(-1))) - 1);
+  const positions = DRAWING_VIEWS[view]?.positions ?? DRAWING_VIEWS[0].positions;
+  const used = positions.slice(0, parts.length);
+  const coordinates = (axis) => used.map((point) => point[axis]);
+  const middle = (values) => (Math.min(...values) + Math.max(...values)) / 2;
+  const originX = FIGURE_WIDTH / 2 - middle(coordinates(0));
+  const originY = FIGURE_HEIGHT / 2 - middle(coordinates(1));
+  const callouts = used.map(([dx, dy], i) => {
+    const x = originX + dx;
+    const y = originY + dy;
+    const labelX = x + (dx > 0 ? 65 : -65);
+    const labelY = y + (dy > 0 ? 33 : -33);
+    return [parts[i].name, x, y, labelX, labelY];
+  });
+  return plate('主要構成要素の模式図', callouts.map(([name, x, y]) => placedSymbol(name, x, y)), callouts);
 }
 
 function pointInDrawing(x, y, margin) {
@@ -325,7 +478,7 @@ function pointInDrawing(x, y, margin) {
     && x >= margin && x <= FIGURE_WIDTH - margin && y >= margin && y <= FIGURE_HEIGHT - margin;
 }
 
-function normalizeFigure(value) {
+function normalizeFigure(value, publication) {
   if (!Array.isArray(value?.parts)) return null;
   const names = new Set();
   const parts = [];
@@ -344,9 +497,15 @@ function normalizeFigure(value) {
   const caption = expectedCaption && expectedCaption.length <= 84 ? expectedCaption : '発明の主要部の構成図';
   const validCallouts = parts.every(({ x, y, labelX, labelY }) => pointInDrawing(x, y, 0)
     && pointInDrawing(labelX, labelY, 18) && Math.hypot(x - labelX, y - labelY) >= 18);
-  return contour && validCallouts
-    ? { caption, contour, hidden, parts }
-    : componentDiagram([...names]);
+  if (contour && validCallouts && caption !== '発明を構成する要素のブロック図' && hasShapeDetail(contour, hidden)) {
+    return { caption, contour, hidden, parts };
+  }
+  if (publication?.figureView === undefined && publication?.title === '黒点導毛方向指示装置'
+    && parts.length === HAIR_DIRECTION_FIGURE.parts.length
+    && HAIR_DIRECTION_FIGURE.parts.every(({ name }) => names.has(name))) {
+    return HAIR_DIRECTION_FIGURE;
+  }
+  return componentDiagram(parts, publication);
 }
 
 function figureSvg(figure, id) {

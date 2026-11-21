@@ -388,7 +388,7 @@ function publicationView(route, id) {
   const batch = batchFor(route.searchParams.get('batch'));
   const entry = recordFor(id, batch);
   if (!entry) return missingView('公報を照会できません', 'AI生成公報は、生成したタブの閲覧中に限り参照できます。');
-  const figure = SAMPLE_FIGURES[entry.id] ?? normalizeFigure(entry.figure);
+  const figure = SAMPLE_FIGURES[entry.id] ?? normalizeFigure(entry.figure, entry);
   activeFigure = figure;
   const figureSection = figure ? exhibitFigure(figure)
     : entry.source === 'ai' && entry.figure === null ? '<p>図面を読み取れませんでした。本文は以下から確認できます。</p>' : '';
