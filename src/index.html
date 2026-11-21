@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="%%CSP%%">
+  <meta name="theme-color" content="#172f50">
+  <meta name="description" content="無用発明庁による架空の特許・不実用新案公報検索。実在の特許機関とは無関係のパロディ作品です。">
+  <title>JFLATBAD | 特許・不実用新案公報検索</title>
+  <link rel="icon" href="%%ICON%%">
+  <style>%%CSS%%</style>
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へ移動</a>
+  <div id="header"></div>
+  <main id="main" class="wrap main" tabindex="-1">
+    <noscript><p>公報検索を利用するには JavaScript を有効にしてください。このサイトは、架空の特許・制度を扱うパロディ作品です。実在の特許機関とは無関係です。</p></noscript>
+  </main>
+  <div id="footer"></div>
+  <dialog id="settings" aria-labelledby="settings-title">
+    <form id="settings-form" class="settings-form" autocomplete="off">
+      <div class="dialog-title">
+        <div><h2 id="settings-title">API設定</h2><p>OpenAI APIキーを使って公報を生成できます。</p></div>
+        <button class="button icon-button" type="button" data-action="close-settings" aria-label="設定を閉じる">×</button>
+      </div>
+      <div class="setting-field">
+        <label for="api-key">OpenAI APIキー</label>
+        <input type="password" id="api-key" spellcheck="false" autocapitalize="off" autocomplete="off"
+          maxlength="512" aria-describedby="key-state" placeholder="sk-…">
+        <p class="hint" id="key-state">未設定</p>
+      </div>
+      <div class="setting-field">
+        <label for="model">生成モデル</label>
+        <div class="select-wrap"><select id="model"></select></div>
+      </div>
+      <p class="settings-note">
+        キーはページのメモリ内に保持します。検索時はキーと検索条件をこのブラウザからOpenAIに直接送信し、利用料金はキーの所有者にかかります。使用後はキーを削除できます。
+      </p>
+      <p id="settings-message" class="settings-message" role="status" aria-live="polite" hidden></p>
+      <div class="dialog-actions">
+        <button class="button button-primary" type="submit">このページで使う</button>
+        <button class="button button-secondary" type="button" data-action="check-key">接続確認</button>
+        <button class="button button-text delete-key" type="button" data-action="delete-key">キーを削除</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="figure-preview" aria-labelledby="figure-preview-title">
+    <div class="figure-viewer">
+      <div class="dialog-title">
+        <div><h2 id="figure-preview-title">図面の拡大表示</h2><p id="figure-preview-caption"></p></div>
+        <button class="button icon-button" type="button" data-action="close-figure" aria-label="図面を閉じる">×</button>
+      </div>
+      <div id="large-figure" class="figure-scroll" tabindex="0" aria-label="拡大図面"></div>
+    </div>
+  </dialog>
+  <script>%%JS%%</script>
+</body>
+</html>
