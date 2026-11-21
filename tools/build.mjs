@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 
 const project = new URL('../', import.meta.url);
 const sources = new URL('src/', project);
@@ -43,9 +43,10 @@ const headers = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
 };
 
-await mkdir(dist, { recursive: true });
+await mkdir(new URL('assets/', dist), { recursive: true });
 await Promise.all([
   writeFile(new URL('index.html', dist), html),
+  copyFile(new URL('assets/jflatbad-home.jpg', sources), new URL('assets/jflatbad-home.jpg', dist)),
   writeFile(new URL('_headers', dist), '/*\n' + Object.entries(headers)
     .map(([name, value]) => '  ' + name + ': ' + value).join('\n') + '\n')
 ]);

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; script-src 'sha256-UBEMTp5PKyarz/obDKGvPPMGIR5+jEatcXrQfmqxrgg='; style-src 'sha256-7w31j2Qss7gr9pLeJp5mzfPqh6tyZYzjc9+5KifZI9o='; img-src data:; connect-src https://api.openai.com">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; script-src 'sha256-xRj9PgF/TsjimcYrEzN3xoWuTg5OdMRWrt7BH8itMHg='; style-src 'sha256-8fp7zc4+Oq3pPtMzsCa7e/t3VSCyQFd7hs6aodhgOg0='; img-src data:; connect-src https://api.openai.com">
   <meta name="theme-color" content="#172f50">
   <meta name="description" content="無用発明庁による架空の特許・不実用新案公報検索。実在の特許機関とは無関係のパロディ作品です。">
   <title>JFLATBAD | 特許・不実用新案公報検索</title>
@@ -154,7 +154,16 @@ input::placeholder { color: #627587; opacity: 1; }
   background: transparent; color: var(--link); font-size: .875rem; text-decoration: underline; text-underline-offset: .2em;
 }
 .search-examples button:hover { background: #dce9f3; }
-.search-source { margin-top: .66rem; padding-top: .63rem; border-top: 1px solid #c9d9e5; font-size: .8125rem; color: var(--muted); }
+.key-guide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .55rem .75rem; }
+.key-guide > div, .key-guide > p { flex: 1 1 16rem; }
+.key-guide .button { white-space: nowrap; min-height: 2.5rem; font-size: .875rem; }
+.key-guide-message { font-size: .875rem; font-weight: 650; color: var(--navy); }
+.key-guide-note { margin-top: .16rem; font-size: .8125rem; color: var(--muted); }
+.search-source { margin-top: .7rem; padding-top: .68rem; border-top: 1px solid #c9d9e5; }
+.result-key-guide {
+  background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius);
+  margin-bottom: .9rem; padding: .55rem .85rem;
+}
 
 .notice-panel { background: var(--paper); border: 1px solid #e0c9c3; border-top: 3px solid #9a4b41; border-radius: var(--radius); overflow: hidden; }
 .notice-head {
@@ -457,6 +466,7 @@ dialog::backdrop { background: #172a40a0; }
   .plate-caption-row { padding: .45rem .5rem; }
   .plate-legend { padding-inline: .42rem; gap: .44rem .37rem; }
   .plate-legend > div { grid-template-columns: 1.48rem minmax(0, 1fr); gap: .23rem; }
+  .key-guide .button { min-height: 2.75rem; }
 }
 @media (max-width: 23.5rem) {
   .agency-name { font-size: .65rem; }
@@ -2004,9 +2014,17 @@ function updateKeyState() {
     ? '設定済み。別のキーに切り替える場合は入力してください。'
     : '未設定';
   const source = main.querySelector('.search-source');
-  if (source) source.textContent = apiKey
-    ? '照会対象：AI生成公報'
-    : '照会対象：見本公報。API設定後は新たに公報を生成します。';
+  if (source) {
+    source.querySelector('.key-guide-message').textContent = apiKey
+      ? 'AIで新しい公報を生成します。'
+      : 'AIで新しい公報を生成するには、OpenAI APIキーを入力してください。';
+    source.querySelector('.key-guide-note').hidden = Boolean(apiKey);
+    source.querySelector('button').hidden = Boolean(apiKey);
+  }
+}
+
+function apiKeyButton(style = 'button-secondary') {
+  return '<button class="button ' + style + '" type="button" data-action="settings" aria-haspopup="dialog">APIキーを入力</button>';
 }
 
 function noticeList() {
@@ -2052,7 +2070,13 @@ function homeView(route) {
             <button class="button button-secondary" type="button" data-action="random">${icon('random')} ランダム検索</button>
           </div>
         </form>
-        <p class="search-source" aria-live="polite"></p>
+        <div class="key-guide search-source">
+          <div aria-live="polite">
+            <p class="key-guide-message"></p>
+            <p class="key-guide-note">キーなしでも「冷蔵庫」「傘」などの見本公報を検索できます。</p>
+          </div>
+          ${apiKeyButton()}
+        </div>
       </section>
       <section class="notice-panel" aria-labelledby="notices-heading">
         <div class="notice-head"><h2 id="notices-heading">${icon('alert')} お知らせ</h2>${infoLink('notices', '一覧を見る')}</div>
@@ -2095,6 +2119,8 @@ function resultView(route) {
         <button class="button button-secondary" type="button" data-action="random"${busy ? ' disabled' : ''}>
           ${icon('random')} ランダム検索
         </button>
+        ${spec.source === 'sample' && records?.length && apiKey
+          ? '<button class="button button-primary" type="button" data-action="retry">AIでこの条件を検索</button>' : ''}
       </div>
     </div>
     <dl class="result-conditions">
@@ -2104,6 +2130,10 @@ function resultView(route) {
       <div><dt>出典</dt><dd>${spec.source === 'ai' ? 'AI生成公報' : '見本公報'}</dd></div>
       ${count}
     </dl>
+    ${spec.source === 'sample' && records?.length && !apiKey ? `<div class="key-guide result-key-guide">
+      <p class="key-guide-message">見本公報を表示しています。AIで新しい公報を生成するには、OpenAI APIキーを入力してください。</p>
+      ${apiKeyButton()}
+    </div>` : ''}
     ${resultBody(spec, records, task, batch?.id)}
     <p class="result-disclaimer">検索結果の有用性について一切保証しません。</p>` };
 }
@@ -2135,10 +2165,12 @@ function resultBody(spec, records, task, batchId) {
     </section>`;
   }
   if (records.length === 0) {
-    return `<section class="state-panel"><h2>該当する公報がありません</h2>
+    return `<section class="state-panel"><h2>該当する見本公報がありません</h2>
       <p>検索条件が有用すぎる可能性があります。</p>
+      <p>${apiKey ? '同じ検索語で新しい公報を生成できます。' : 'この検索語で新しい公報を生成するには、OpenAI APIキーを入力してください。'}</p>
       <div class="result-actions">
-        <button class="button button-primary" type="button" data-action="random">無用化して再検索</button>
+        ${apiKey ? '<button class="button button-primary" type="button" data-action="retry">AIでこの条件を検索</button>' : apiKeyButton('button-primary')}
+        <button class="button button-secondary" type="button" data-action="random">無用化して再検索</button>
         ${infoLink('archive', '見本公報の収録分野')}
       </div>
     </section>`;
@@ -2540,7 +2572,7 @@ settingsForm.addEventListener('submit', (event) => {
   selectedModel = Object.hasOwn(MODELS, modelField.value) ? modelField.value : DEFAULT_MODEL;
   keyField.value = '';
   dialog.close();
-  if (pending || (currentResult && job?.stage === 'error')) render();
+  if (pending || currentResult) render();
   else updateKeyState();
 });
 

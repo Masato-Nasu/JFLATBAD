@@ -143,7 +143,16 @@ input::placeholder { color: #627587; opacity: 1; }
   background: transparent; color: var(--link); font-size: .875rem; text-decoration: underline; text-underline-offset: .2em;
 }
 .search-examples button:hover { background: #dce9f3; }
-.search-source { margin-top: .66rem; padding-top: .63rem; border-top: 1px solid #c9d9e5; font-size: .8125rem; color: var(--muted); }
+.key-guide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .55rem .75rem; }
+.key-guide > div, .key-guide > p { flex: 1 1 16rem; }
+.key-guide .button { white-space: nowrap; min-height: 2.5rem; font-size: .875rem; }
+.key-guide-message { font-size: .875rem; font-weight: 650; color: var(--navy); }
+.key-guide-note { margin-top: .16rem; font-size: .8125rem; color: var(--muted); }
+.search-source { margin-top: .7rem; padding-top: .68rem; border-top: 1px solid #c9d9e5; }
+.result-key-guide {
+  background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius);
+  margin-bottom: .9rem; padding: .55rem .85rem;
+}
 
 .notice-panel { background: var(--paper); border: 1px solid #e0c9c3; border-top: 3px solid #9a4b41; border-radius: var(--radius); overflow: hidden; }
 .notice-head {
@@ -446,6 +455,7 @@ dialog::backdrop { background: #172a40a0; }
   .plate-caption-row { padding: .45rem .5rem; }
   .plate-legend { padding-inline: .42rem; gap: .44rem .37rem; }
   .plate-legend > div { grid-template-columns: 1.48rem minmax(0, 1fr); gap: .23rem; }
+  .key-guide .button { min-height: 2.75rem; }
 }
 @media (max-width: 23.5rem) {
   .agency-name { font-size: .65rem; }

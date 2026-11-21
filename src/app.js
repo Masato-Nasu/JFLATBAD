@@ -185,9 +185,17 @@ function updateKeyState() {
     ? '設定済み。別のキーに切り替える場合は入力してください。'
     : '未設定';
   const source = main.querySelector('.search-source');
-  if (source) source.textContent = apiKey
-    ? '照会対象：AI生成公報'
-    : '照会対象：見本公報。API設定後は新たに公報を生成します。';
+  if (source) {
+    source.querySelector('.key-guide-message').textContent = apiKey
+      ? 'AIで新しい公報を生成します。'
+      : 'AIで新しい公報を生成するには、OpenAI APIキーを入力してください。';
+    source.querySelector('.key-guide-note').hidden = Boolean(apiKey);
+    source.querySelector('button').hidden = Boolean(apiKey);
+  }
+}
+
+function apiKeyButton(style = 'button-secondary') {
+  return '<button class="button ' + style + '" type="button" data-action="settings" aria-haspopup="dialog">APIキーを入力</button>';
 }
 
 function noticeList() {
@@ -233,7 +241,13 @@ function homeView(route) {
             <button class="button button-secondary" type="button" data-action="random">${icon('random')} ランダム検索</button>
           </div>
         </form>
-        <p class="search-source" aria-live="polite"></p>
+        <div class="key-guide search-source">
+          <div aria-live="polite">
+            <p class="key-guide-message"></p>
+            <p class="key-guide-note">キーなしでも「冷蔵庫」「傘」などの見本公報を検索できます。</p>
+          </div>
+          ${apiKeyButton()}
+        </div>
       </section>
       <section class="notice-panel" aria-labelledby="notices-heading">
         <div class="notice-head"><h2 id="notices-heading">${icon('alert')} お知らせ</h2>${infoLink('notices', '一覧を見る')}</div>
@@ -276,6 +290,8 @@ function resultView(route) {
         <button class="button button-secondary" type="button" data-action="random"${busy ? ' disabled' : ''}>
           ${icon('random')} ランダム検索
         </button>
+        ${spec.source === 'sample' && records?.length && apiKey
+          ? '<button class="button button-primary" type="button" data-action="retry">AIでこの条件を検索</button>' : ''}
       </div>
     </div>
     <dl class="result-conditions">
@@ -285,6 +301,10 @@ function resultView(route) {
       <div><dt>出典</dt><dd>${spec.source === 'ai' ? 'AI生成公報' : '見本公報'}</dd></div>
       ${count}
     </dl>
+    ${spec.source === 'sample' && records?.length && !apiKey ? `<div class="key-guide result-key-guide">
+      <p class="key-guide-message">見本公報を表示しています。AIで新しい公報を生成するには、OpenAI APIキーを入力してください。</p>
+      ${apiKeyButton()}
+    </div>` : ''}
     ${resultBody(spec, records, task, batch?.id)}
     <p class="result-disclaimer">検索結果の有用性について一切保証しません。</p>` };
 }
@@ -316,10 +336,12 @@ function resultBody(spec, records, task, batchId) {
     </section>`;
   }
   if (records.length === 0) {
-    return `<section class="state-panel"><h2>該当する公報がありません</h2>
+    return `<section class="state-panel"><h2>該当する見本公報がありません</h2>
       <p>検索条件が有用すぎる可能性があります。</p>
+      <p>${apiKey ? '同じ検索語で新しい公報を生成できます。' : 'この検索語で新しい公報を生成するには、OpenAI APIキーを入力してください。'}</p>
       <div class="result-actions">
-        <button class="button button-primary" type="button" data-action="random">無用化して再検索</button>
+        ${apiKey ? '<button class="button button-primary" type="button" data-action="retry">AIでこの条件を検索</button>' : apiKeyButton('button-primary')}
+        <button class="button button-secondary" type="button" data-action="random">無用化して再検索</button>
         ${infoLink('archive', '見本公報の収録分野')}
       </div>
     </section>`;
@@ -721,7 +743,7 @@ settingsForm.addEventListener('submit', (event) => {
   selectedModel = Object.hasOwn(MODELS, modelField.value) ? modelField.value : DEFAULT_MODEL;
   keyField.value = '';
   dialog.close();
-  if (pending || (currentResult && job?.stage === 'error')) render();
+  if (pending || currentResult) render();
   else updateKeyState();
 });
 

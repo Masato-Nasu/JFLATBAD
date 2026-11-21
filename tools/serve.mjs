@@ -9,6 +9,7 @@ const argument = (name) => {
 const port = Number(argument('--port') ?? process.env.PORT ?? 8788);
 const host = argument('--host') ?? process.env.HOST ?? '127.0.0.1';
 const index = new URL('../dist/index.html', import.meta.url);
+const screenshot = new URL('../dist/assets/jflatbad-home.jpg', import.meta.url);
 
 const server = createServer(async (request, response) => {
   if (!['GET', 'HEAD'].includes(request.method)) {
@@ -16,14 +17,16 @@ const server = createServer(async (request, response) => {
     return;
   }
   try {
-    const html = await readFile(index);
+    const pathname = new URL(request.url, 'http://localhost').pathname;
+    const isScreenshot = pathname === '/assets/jflatbad-home.jpg';
+    const content = await readFile(isScreenshot ? screenshot : index);
     response.writeHead(200, {
-      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Type': isScreenshot ? 'image/jpeg' : 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer'
     });
-    response.end(request.method === 'HEAD' ? undefined : html);
+    response.end(request.method === 'HEAD' ? undefined : content);
   } catch {
     response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Unable to read dist/index.html.');
   }
