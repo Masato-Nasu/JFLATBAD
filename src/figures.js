@@ -508,6 +508,10 @@ function normalizeFigure(value, publication) {
   return componentDiagram(parts, publication);
 }
 
+function publicationFigure(entry) {
+  return Object.hasOwn(SAMPLE_FIGURES, entry.id) ? SAMPLE_FIGURES[entry.id] : normalizeFigure(entry.figure, entry);
+}
+
 function figureSvg(figure, id) {
   const leaders = figure.parts.map(({ x, y, labelX, labelY }, index) => {
     const length = Math.hypot(labelX - x, labelY - y);
