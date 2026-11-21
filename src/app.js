@@ -305,15 +305,22 @@ function resultView(route) {
       <p class="key-guide-message">見本公報を表示しています。AIで新しい公報を生成するには、OpenAI APIキーを入力してください。</p>
       ${apiKeyButton()}
     </div>` : ''}
+    ${batch?.spec.source === 'ai' && records.length < RECORD_COUNT ? `<div class="key-guide result-key-guide" role="status">
+      <div>
+        <p class="key-guide-message">${records.length}件の公報を取得できました。取得済みの公報を表示しています。</p>
+        ${batch.warning ? '<p class="key-guide-note">' + html(batch.warning) + '</p>' : ''}
+      </div>
+      ${apiKey ? '<button class="button button-secondary" type="button" data-action="retry">同じ条件で再検索</button>' : ''}
+    </div>` : ''}
     ${resultBody(spec, records, task, batch?.id)}
     <p class="result-disclaimer">検索結果の有用性について一切保証しません。</p>` };
 }
 
 function resultBody(spec, records, task, batchId) {
   if (task?.stage === 'pending') {
-    return `<section class="state-panel" aria-busy="true">
+    return `<section class="state-panel">
       <h2 class="loading-line"><span class="spinner" aria-hidden="true"></span>公報を編纂しています</h2>
-      <p role="status">${task.retrying ? '応答を確認し、規定の形式で取得し直しています。' : '公報本文と審査記録を取得しています。応答には時間がかかる場合があります。'}</p>
+      <p id="generation-status" role="status">${generationStatus(task)}</p>
       <div class="result-actions"><button class="button button-secondary" type="button" data-action="cancel">中止</button></div>
     </section>`;
   }
@@ -383,6 +390,8 @@ function publicationView(route, id) {
   if (!entry) return missingView('公報を照会できません', 'AI生成公報は、生成したタブの閲覧中に限り参照できます。');
   const figure = SAMPLE_FIGURES[entry.id] ?? normalizeFigure(entry.figure);
   activeFigure = figure;
+  const figureSection = figure ? exhibitFigure(figure)
+    : entry.source === 'ai' && entry.figure === null ? '<p>図面を読み取れませんでした。本文は以下から確認できます。</p>' : '';
   const remembered = history.state?.returnTo;
   const returnTo = remembered?.path?.startsWith('/search?') || remembered?.path?.startsWith('/info/')
     ? remembered
@@ -394,7 +403,7 @@ function publicationView(route, id) {
   const articleSections = DOCUMENT_SECTIONS.map(([key, label]) => documentSection(key, label, '<p>' + html(entry[key]) + '</p>')).join('');
   const claims = entry.claims.map((text, index) => `<div class="claim"><h3>請求項${index + 1}</h3><p>${html(text)}</p></div>`).join('');
   const outline = [
-    ['abstract', '要約'], ...(figure ? [['drawings', '図面']] : []), ...DOCUMENT_SECTIONS,
+    ['abstract', '要約'], ...(figureSection ? [['drawings', '図面']] : []), ...DOCUMENT_SECTIONS,
     ['claims', '特許請求の範囲'], ['review', '無用性審査結果'], ['citations', '引用公報']
   ];
   const claimHeading = entry.kind === 'model' ? '不実用新案登録請求の範囲' : '特許請求の範囲';
@@ -415,7 +424,7 @@ function publicationView(route, id) {
         </header>
         <div class="document-body">
           ${documentSection('abstract', '要約', '<p>' + html(entry.abstract) + '</p>')}
-          ${figure ? documentSection('drawings', '図面', exhibitFigure(figure)) : ''}
+          ${figureSection ? documentSection('drawings', '図面', figureSection) : ''}
           ${articleSections}
           ${documentSection('claims', claimHeading, claims)}
           ${documentSection('review', '無用性審査結果', `<div class="review-block ${html(entry.verdict)}">${verdictBadge(entry)}<p>${html(entry.review)}</p></div>`)}
@@ -565,17 +574,27 @@ function priorTitles(spec) {
   return [...new Set([...past, ...samples, SELF.title])].slice(-30);
 }
 
+function generationStatus(task) {
+  if (task.refilling) {
+    return task.received ? task.received + '件を取得しました。不足分だけ追加で取得しています。'
+      : '件数を減らし、短い公報にして取得し直しています。';
+  }
+  if (task.received) return task.received + '件を取得しました。残りの公報を編纂しています。';
+  return '公報を4件ずつ編纂しています。応答には時間がかかる場合があります。';
+}
+
 function numberGenerated(entries, batchId) {
   const date = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date());
-  const ids = entries.map((_, index) => 'gen-' + batchId + '-' + (index + 1));
-  return entries.map((entry, index) => {
+  const ids = new Map(entries.map((entry) => [entry.slot, 'gen-' + batchId + '-' + entry.slot]));
+  return entries.map((entry) => {
     session.serial = session.serial >= 999999 ? 200001 : session.serial + 1;
     const related = CATALOG.find((record) => record.classCode === entry.classCode);
-    const references = entry.citations.map((citation) => ids[citation - 1]).filter((ref) => ref && ref !== ids[index]);
+    const id = ids.get(entry.slot);
+    const references = entry.citations.map((citation) => ids.get(citation)).filter((ref) => ref && ref !== id);
     return {
-      ...entry, id: ids[index], date, source: 'ai',
+      ...entry, id, date, source: 'ai',
       number: publicationNumber(entry.kind, date.slice(0, 4), session.serial),
       citations: references.length ? references : [related.id]
     };
@@ -584,7 +603,7 @@ function numberGenerated(entries, batchId) {
 
 async function runJob(task, key, model) {
   try {
-    const entries = await generatePublications({
+    const result = await generatePublications({
       subject: task.spec.subject,
       random: task.spec.random,
       filter: task.spec.filter,
@@ -592,20 +611,22 @@ async function runJob(task, key, model) {
       model,
       key,
       signal: task.controller.signal,
-      onRetry: () => {
-        task.retrying = true;
-        if (currentPath === task.path) render();
+      onProgress: ({ count, refilling }) => {
+        task.received = count;
+        task.refilling = refilling;
+        const status = main.querySelector('#generation-status');
+        if (currentPath === task.path && status) status.textContent = generationStatus(task);
       }
     });
     if (task.controller.signal.aborted) return;
-    const generated = numberGenerated(entries, task.id);
+    const generated = numberGenerated(result.entries, task.id);
     const records = maybeIncludeSpecial(generated, task.spec.filter);
     // If the rare fixed record replaced a generated result, retarget references to it.
     const replaced = generated.find((entry) => !records.includes(entry));
     const included = replaced ? records.map((entry) => entry === SELF ? entry : {
       ...entry, citations: entry.citations.map((ref) => ref === replaced.id ? SELF_ID : ref)
     }) : records;
-    keepBatch({ id: task.id, spec: task.spec, records: included });
+    keepBatch({ id: task.id, spec: task.spec, records: included, warning: result.warning });
     task.stage = 'done';
   } catch (error) {
     if (task.controller.signal.aborted) return;
@@ -641,7 +662,7 @@ function startSearch({ query = '', random = false, filter = 'all', forceSample =
     navigate(path, { replace });
     return;
   }
-  const task = { id, spec, path, controller: new AbortController(), stage: 'pending', retrying: false };
+  const task = { id, spec, path, controller: new AbortController(), stage: 'pending', received: 0, refilling: false };
   job = task;
   navigate(path, { replace });
   void runJob(task, apiKey, selectedModel);

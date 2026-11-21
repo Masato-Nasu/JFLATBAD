@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; script-src 'sha256-xRj9PgF/TsjimcYrEzN3xoWuTg5OdMRWrt7BH8itMHg='; style-src 'sha256-8fp7zc4+Oq3pPtMzsCa7e/t3VSCyQFd7hs6aodhgOg0='; img-src data:; connect-src https://api.openai.com; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; script-src 'sha256-UQtE6P7sx4RGtc+OxNYqunJ7v8k2fOi33v6Ckbx1uZ4='; style-src 'sha256-8fp7zc4+Oq3pPtMzsCa7e/t3VSCyQFd7hs6aodhgOg0='; img-src data:; connect-src https://api.openai.com; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   Permissions-Policy: camera=(), microphone=(), geolocation=()
