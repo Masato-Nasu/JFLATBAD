@@ -6,7 +6,7 @@ const sources = new URL('src/', project);
 const dist = new URL('dist/', project);
 const readSource = (name) => readFile(new URL(name, sources), 'utf8');
 
-const scriptFiles = ['catalog.js', 'figures.js', 'info.js', 'api.js', 'history.js', 'app.js'];
+const scriptFiles = ['catalog.js', 'figures.js', 'info.js', 'api.js', 'history.js', 'publication-image.js', 'app.js'];
 const [template, styles, icon, ...scripts] = await Promise.all([
   readSource('index.html'),
   readSource('styles.css'),

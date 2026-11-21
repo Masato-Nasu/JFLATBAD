@@ -310,6 +310,9 @@ input::placeholder { color: #627587; opacity: 1; }
 .document-meta { display: flex; flex-wrap: wrap; gap: .5rem 1.15rem; margin-top: .8rem; font-size: .875rem; }
 .document-meta div { display: flex; gap: .35rem; align-items: center; }
 .document-meta dt { color: var(--muted); }
+.document-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; margin-top: .95rem; }
+.document-actions .button { font-size: .875rem; }
+.document-actions .hint:empty { display: none; }
 .document-body { padding-block: .2rem 1.5rem; }
 .document-section { padding-block: 1.14rem; border-bottom: 1px solid var(--soft-rule); scroll-margin-top: 1rem; }
 .document-section:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -496,7 +499,9 @@ dialog::backdrop { background: #172a40a0; }
 }
 @media print {
   body { background: white; color: black; }
-  #header, .footer-links, .footer-motto, .crumbs, .document-side, .document-back, .skip-link, .figure-button { display: none; }
+  #header, .footer-links, .footer-motto, .crumbs, .document-side, .document-back, .document-actions, .skip-link, .figure-button {
+    display: none;
+  }
   .footer { background: white; }
   .wrap { width: 100%; }
   .main { padding: 0; }

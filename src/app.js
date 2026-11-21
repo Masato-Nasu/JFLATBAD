@@ -24,7 +24,7 @@ let keyTrigger = null;
 let job = null;
 let currentPath = '';
 let currentResult = null;
-let activeFigure = null;
+let activePublication = null;
 let figureTrigger = null;
 let historyImporting = false;
 let historyNotice = '';
@@ -343,25 +343,53 @@ function archiveFeedback(message) {
   if (status) status.textContent = message;
 }
 
+function fileLabel(value) {
+  return Array.from(value.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')).slice(0, 48).join('');
+}
+
+function downloadFile(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const download = document.createElement('a');
+  download.href = url;
+  download.download = filename;
+  document.body.append(download);
+  try { download.click(); }
+  finally {
+    download.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+}
+
 function exportBatches(batches, label) {
   if (!batches.length) return;
   archiveFeedback('');
   try {
     const json = serializeSearchHistory(batches);
-    const url = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
-    const download = document.createElement('a');
-    const name = label.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 48);
     const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
-    download.href = url;
-    download.download = 'JFLATBAD-' + name + '-' + day + '.json';
-    document.body.append(download);
-    try { download.click(); }
-    finally {
-      download.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    }
+    downloadFile(new Blob([json], { type: 'application/json;charset=utf-8' }),
+      'JFLATBAD-' + fileLabel(label) + '-' + day + '.json');
   } catch {
     archiveFeedback('JSONを書き出せませんでした。もう一度お試しください。');
+  }
+}
+
+async function exportPublicationImage(button) {
+  const publication = activePublication;
+  if (!publication || button.disabled) return;
+  const status = main.querySelector('#publication-image-status');
+  button.disabled = true;
+  status.textContent = 'JPEGを作成しています。';
+  try {
+    const blob = await renderPublicationJpeg(publication);
+    const { number, title } = publication.entry;
+    downloadFile(blob, 'JFLATBAD-' + fileLabel(number) + '-' + fileLabel(title) + '.jpg');
+    status.textContent = 'JPEGを書き出しました。';
+  } catch (error) {
+    status.textContent = error instanceof RangeError
+      ? 'この公報は1枚のJPEGに収まる長さを超えています。'
+      : 'JPEGを書き出せませんでした。もう一度お試しください。';
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -532,9 +560,10 @@ function publicationView(route, id) {
     'このブラウザの検索履歴に公報が見つかりません。書き出したJSONがあれば、検索履歴から読み込めます。',
     link('/history', '検索履歴へ', 'button button-text'));
   const figure = publicationFigure(entry);
-  activeFigure = figure;
+  const figureNotice = entry.source === 'ai' && entry.figure === null
+    ? '図面を読み取れませんでした。本文は以下から確認できます。' : '';
   const figureSection = figure ? exhibitFigure(figure)
-    : entry.source === 'ai' && entry.figure === null ? '<p>図面を読み取れませんでした。本文は以下から確認できます。</p>' : '';
+    : figureNotice ? '<p>' + figureNotice + '</p>' : '';
   const remembered = history.state?.returnTo;
   const returnTo = remembered?.path?.startsWith('/search?') || remembered?.path?.startsWith('/info/')
     ? remembered
@@ -543,13 +572,15 @@ function publicationView(route, id) {
   const backText = returnTo.label === '検索結果' ? '検索結果一覧へ戻る' : returnTo.label + 'へ戻る';
   const backLink = (style) => link(returnTo.path, html(backText), style, ' data-restore-list');
   const citations = entry.citations.map((ref) => recordFor(ref, batch)).filter(Boolean);
-  const articleSections = DOCUMENT_SECTIONS.map(([key, label]) => documentSection(key, label, '<p>' + html(entry[key]) + '</p>')).join('');
+  const sections = DOCUMENT_SECTIONS.map(([key, label]) => ({ key, label, value: entry[key] }));
+  const articleSections = sections.map(({ key, label, value }) => documentSection(key, label, '<p>' + html(value) + '</p>')).join('');
   const claims = entry.claims.map((text, index) => `<div class="claim"><h3>請求項${index + 1}</h3><p>${html(text)}</p></div>`).join('');
   const outline = [
     ['abstract', '要約'], ...(figureSection ? [['drawings', '図面']] : []), ...DOCUMENT_SECTIONS,
     ['claims', '特許請求の範囲'], ['review', '無用性審査結果'], ['citations', '引用公報']
   ];
   const claimHeading = entry.kind === 'model' ? '不実用新案登録請求の範囲' : '特許請求の範囲';
+  activePublication = { entry, figure, figureNotice, sections, claimHeading, citations };
   return { title: entry.title, content: `
     ${crumbs('公報詳細', [[returnTo.path, returnTo.label]])}
     <div class="publication-layout">
@@ -564,6 +595,10 @@ function publicationView(route, id) {
             <div><dt>公表日</dt><dd>${dated(entry.date)}</dd></div>
             <div><dt>分類</dt><dd>${infoLink('classification', entry.classCode + ' ' + CLASSIFICATIONS[entry.classCode])}</dd></div>
           </dl>
+          <div class="document-actions">
+            <button class="button button-secondary" type="button" data-action="export-publication-image">JPEGで保存</button>
+            <p class="hint" id="publication-image-status" role="status"></p>
+          </div>
         </header>
         <div class="document-body">
           ${documentSection('abstract', '要約', '<p>' + html(entry.abstract) + '</p>')}
@@ -642,7 +677,7 @@ function render() {
   const route = readRoute();
   currentPath = routeString(route);
   currentResult = null;
-  activeFigure = null;
+  activePublication = null;
   const path = route.pathname.replace(/\/+$/, '') || '/';
   if (job?.stage === 'pending' && (path !== '/search' || route.searchParams.get('batch') !== job.id)) {
     cancelJob();
@@ -851,11 +886,12 @@ function openSettings(button) {
 }
 
 function expandFigure(button) {
-  if (!activeFigure || figureDialog.open) return;
+  const figure = activePublication?.figure;
+  if (!figure || figureDialog.open) return;
   figureTrigger = button;
   const stage = document.querySelector('#large-figure');
-  document.querySelector('#figure-preview-caption').textContent = '図1　' + activeFigure.caption;
-  stage.innerHTML = figureSvg(activeFigure, 'large-plate') + figureLegend(activeFigure);
+  document.querySelector('#figure-preview-caption').textContent = '図1　' + figure.caption;
+  stage.innerHTML = figureSvg(figure, 'large-plate') + figureLegend(figure);
   figureDialog.showModal();
   stage.scrollLeft = Math.max(0, (stage.scrollWidth - stage.clientWidth) / 2);
   stage.scrollTop = 0;
@@ -971,6 +1007,9 @@ document.addEventListener('click', (event) => {
         break;
       case 'close-figure':
         figureDialog.close();
+        break;
+      case 'export-publication-image':
+        void exportPublicationImage(action);
         break;
       case 'check-key':
         void checkKey();

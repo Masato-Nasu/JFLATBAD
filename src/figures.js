@@ -512,12 +512,15 @@ function publicationFigure(entry) {
   return Object.hasOwn(SAMPLE_FIGURES, entry.id) ? SAMPLE_FIGURES[entry.id] : normalizeFigure(entry.figure, entry);
 }
 
+function leaderEnd({ x, y, labelX, labelY }) {
+  const offset = 13 / Math.max(13, Math.hypot(labelX - x, labelY - y));
+  return [labelX + (x - labelX) * offset, labelY + (y - labelY) * offset];
+}
+
 function figureSvg(figure, id) {
-  const leaders = figure.parts.map(({ x, y, labelX, labelY }, index) => {
-    const length = Math.hypot(labelX - x, labelY - y);
-    const offset = 13 / Math.max(13, length);
-    const endX = (labelX + (x - labelX) * offset).toFixed(1);
-    const endY = (labelY + (y - labelY) * offset).toFixed(1);
+  const leaders = figure.parts.map((part, index) => {
+    const { x, y, labelX, labelY } = part;
+    const [endX, endY] = leaderEnd(part).map((value) => value.toFixed(1));
     return `<line class="plate-leader" x1="${html(x)}" y1="${html(y)}" x2="${endX}" y2="${endY}"/>
       <circle class="plate-target" cx="${html(x)}" cy="${html(y)}" r="2.15"/>
       <text class="plate-number" x="${html(labelX)}" y="${html(labelY)}">${10 + index}</text>`;
